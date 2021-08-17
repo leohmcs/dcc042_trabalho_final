@@ -200,9 +200,9 @@ class AnalisadorFronteira:
         it = np.nditer(m, flags=['multi_index'])
         for p in it:
             neighbours = self.get_neighbours(m.shape, it.multi_index)
-            if 0 < p < threshold and np.any(m[neighbours] == -1):
-                # in other words, if the cell is probably free and any of its neighbours is unknowm, it is a frontier
-                frontier_map[it.multi_index] = 1
+            if 0 <= p < threshold and np.any(m[neighbours] == -1):
+                    # in other words, if the cell is probably free and any of its neighbours is unknowm, it is a frontier
+                    frontier_map[it.multi_index] = 1
 
         return frontier_map
 

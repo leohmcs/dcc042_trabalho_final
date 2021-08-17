@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-# TODO: mudar a parte de planejamento para outro arquivo. Esta aqui para testes iniciais
-
 import rospy
 
 from nav_msgs.msg import OccupancyGrid
@@ -48,7 +46,7 @@ class AnalisadorFronteirasNode:
         self.map_size[1] = msg.info.width
 
         self.map = np.reshape(msg.data, self.map_size)
-        self.bin_map = self.binarize_map(self.map, 80, 40)
+        self.bin_map = self.binarize_map(self.map, 51)
         self.map_image = self.occupancygrid_to_image(self.bin_map)
 
     def pose_callback(self, msg):
@@ -69,22 +67,19 @@ class AnalisadorFronteirasNode:
         return image.astype('uint8')
 
     ## binarize occupancy map
-    def binarize_map(self, m, occ_thresh, free_thresh):
+    def binarize_map(self, m, thresh):
         m = np.array(m)
-        m[m > occ_thresh] = 100
-        m[(0 < m) & (m < free_thresh)] = 0
-        m[(free_thresh < m) & (m < occ_thresh)] = -1
+        m[m > thresh] = 100
+        m[(0 < m) & (m < thresh)] = 0
+        # m[(free_thresh <= m) & (m <= occ_thresh)] = -1
 
         return m
 
 rospy.init_node('analiseFronteiras')
 
 node = AnalisadorFronteirasNode()
-#############################
-# path_planning = rrt.RRT()
-#############################
 
-rate = rospy.Rate(5)
+rate = rospy.Rate(0.2)
 while not rospy.is_shutdown():
     while node.map_size[0] == 0 or node.map_size[1] == 0:
         rospy.loginfo("Waiting for map.")
@@ -102,8 +97,7 @@ while not rospy.is_shutdown():
     map_eroded = cv2.erode(node.map_image, kernel)
     cv2.imshow("Eroded", map_eroded)
 
-    print(node.bin_map)
-    frontiers_map = node.analisador.get_frontier_pixels(node.map).astype('uint8')
+    frontiers_map = node.analisador.get_frontier_pixels(node.bin_map).astype('uint8')
     cv2.imshow("Antes", frontiers_map * 255)
     frontiers_map = cv2.morphologyEx(frontiers_map, cv2.MORPH_DILATE, kernel, iterations=3)
     cv2.imshow("Frontiers", frontiers_map * 255)
