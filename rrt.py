@@ -82,9 +82,9 @@ class RRT:
             # print(m[rr, cc])
             return False
 
-        return True and self.compare_trees(2)
+        return True and self.compare_trees(node, 2)
 
-    def compare_trees(self, thresh):
+    def compare_trees(self, node, thresh):
         if self.friends is None:
             return True
 
@@ -94,10 +94,9 @@ class RRT:
         
         trees = nx.compose(trees)
 
-        for n1 in trees:
-            for n in self.rrt:
-                if np.linalg.norm(n - n1) <= thresh:
-                    return False
+        for n in trees:
+            if np.linalg.norm(n - node) <= thresh:
+                return False
 
         return True
 
