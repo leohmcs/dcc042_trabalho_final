@@ -1,10 +1,16 @@
 #!/usr/bin/env python
+# coding: utf-8
+
+# TODO:
+# - considerar amostras de diferentes arvores invalidas quando estao proximas (falta testar)
 
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from skimage.draw import line
+
+import cv2
 
 import time
 
@@ -15,8 +21,8 @@ class RRT:
         def __init__(self, position):
             self.position = position
 
-
-    def __init__(self, max_nodes, occupancy_thresh=80, time_step=1, speed=1):
+    # TODO: dar um nome mais decente para trees
+    def __init__(self, max_nodes, occupancy_thresh=0.8, time_step=1, speed=1):
         self.OCCUPANCY_THRESH = occupancy_thresh
         
         # RRT
@@ -25,6 +31,9 @@ class RRT:
         self.robot_node = None
         self.goal_node = None
 
+        # RRTs dos outros robos
+        self.trees = None
+        
         # control
         self.time_step = time_step  # seconds
         self.robot_speed = speed  # meters/second
@@ -35,25 +44,52 @@ class RRT:
     def position_to_cell(self, pos, cell_size):
         return np.floor(pos / cell_size).astype('int')
 
-    def generate_random_sample(self, map_size):
+    def generate_random_sample(self, m, unknow_flag):
         # random position
-        x = np.random.choice(map_size[0])
-        y = np.random.choice(map_size[1])
+        rng = np.random.default_rng()
+        pos = rng.choice(np.transpose(np.where(m != unknow_flag)))
 
-        print("Posicao aleatoria gerada: {}, {}".format(x, y))
-        return np.array([x, y])
-
+        return np.array([pos[1], pos[0]])
+    
     # every cell with occupancy probability greater than or equal to thresh is considered occupied
     def validate_sample(self, nn, node, m, thresh):
         if node[0] >= m.shape[0] or node[1] >= m.shape[1]:
             return False
 
-        rr, cc = line(nn[1], nn[0], node[1], node[0])
+        m_img = np.copy(m)
+        ind_unknow = np.where(m_img == -1)
+        m_img[ind_unknow] = 0.5
+        m_img = ((1 - m_img)*255).astype('uint8')
 
-        if np.all((0 <= m[rr, cc]) & (m[rr, cc] < thresh)):
+        rr, cc = line(node[1], node[0], nn[1], nn[0])
+
+        m_img = cv2.cvtColor(m_img, cv2.COLOR_GRAY2RGB)
+        m_img[rr, cc] = (0, 0, 255)
+        m_img[node[1], node[0]] = (0, 255, 0)
+
+        scale = 5
+        new_dim = (m_img.shape[1] * scale, m_img.shape[0] * scale)
+        m_resized = cv2.resize(m_img, new_dim, interpolation=cv2.INTER_AREA)
+
+        cv2.imshow("Validar R", m_resized)
+        cv2.imshow("Validar", m_img)
+        cv2.waitKey(10) & 0xff
+        if not np.all((0 <= m[rr, cc]) & (m[rr, cc] < thresh)):
+            # print(m[rr, cc])
+            return False
+
+        return True and self.compare_trees(2)
+
+    def compare_trees(self, thresh):
+        if self.trees is None:
             return True
 
-        return False
+        for n1 in self.trees:
+            for n in self.rrt:
+                if np.linalg.norm(n - n1) <= thresh:
+                    return False
+
+        return True
 
     # returns the nearest node in the tree to a given node
     def nearest_neighbour(self, node):
@@ -70,8 +106,10 @@ class RRT:
     # returns the new node to be added to the tree. node is the 'x_rand'; nn is nodes's nearest neighbour
     def new_node(self, node, nn, control_input):
         # vetor na direcao da amostra do tamanho da distancia que o robo vai andar
-        u = (node.position - nn.position) / np.linalg.norm(node.position - nn.position) * control_input
+        u = (node.position - nn.position) / np.linalg.norm(node.position - nn.position)
+        u = u * control_input
 
+        # print(u)
         # soma com o vizinho mais proximo para fazer a translacao
         new_node_pos = u + nn.position
         new_node = self.Node(new_node_pos)
@@ -86,9 +124,16 @@ class RRT:
         
         return False
 
-    def generate_path(self, robot_pose, goal, m, map_size, animate=True, ani_interval=1000):
-        # TODO: fazer animacao
-        # ani = FuncAnimation(plt.gcf(), self.animate, interval=ani_interval)
+    def generate_path(self, robot_pose, goal, m, unknown_flag, map_size, trees, animate=False, ani_title='RRT'):
+        # animacao da geracao da arvore
+        if animate:
+            # TODO: botar nome do robo no titulo do plot
+            plt.tight_layout()
+            plt.ion()
+            plt.show()
+
+        # arvores dos outros robos
+        self.trees = trees
 
         path_found = False
         pos = {}
@@ -102,8 +147,26 @@ class RRT:
         travel_dist = self.robot_speed * self.time_step
         while self.tree.number_of_nodes() <= self.max_nodes:
             # gerar nova amostra aleatoria
-            rand_pos = self.generate_random_sample(map_size)
+            rand_pos = (self.generate_random_sample(m, unknown_flag) * cell_size).astype('int')
             x_rand = self.Node(rand_pos)
+
+            ## TODO: DEBUGANDO
+            rand_cell = self.position_to_cell(rand_pos, cell_size)
+            m_img = np.copy(m)
+            ind_unknow = np.where(m_img == -1)
+            m_img[ind_unknow] = 0.5
+            m_img = ((1 - m_img)*255).astype('uint8')
+            m_img = cv2.cvtColor(m_img, cv2.COLOR_GRAY2RGB)
+            m_img[rand_cell[1], rand_cell[0]] = (255, 0, 0)
+
+            scale = 5
+            new_dim = (m_img.shape[1] * scale, m_img.shape[0] * scale)
+            m_resized = cv2.resize(m_img, new_dim, interpolation=cv2.INTER_AREA)
+
+            cv2.imshow("Validar R", m_resized)
+            cv2.imshow("Validar", m_img)
+            cv2.waitKey(10) & 0xff
+            ## DEBUGANDO
 
             # obter o no mais proximo da amostra, ao qual ela sera ligada
             nn = self.nearest_neighbour(x_rand)
@@ -118,31 +181,46 @@ class RRT:
             # validar o caminho entre o novo no e seu vizinho mais proximo
             nn_cell = self.position_to_cell(nn.position, cell_size)
             x_new_cell = self.position_to_cell(x_new.position, cell_size)
+            # print("Positions: {}, {}".format(nn.position, x_new.position))
+            # print("Cell: {}, {}".format(x_new_cell, nn_cell))
             if self.validate_sample(nn_cell, x_new_cell, m, self.OCCUPANCY_THRESH):
                 self.tree.add_node(x_new)
                 self.tree.add_edge(x_new, nn)
                 pos[x_new] = x_new.position.astype("int")
 
-                if self.goal_reached(x_new.position, goal, 1):
+                # print("Adicionou nó na posição: {}".format(x_new.position))
+
+                if self.goal_reached(x_new.position, goal, 0.5):
                     self.goal_node = x_new
                     path_found = True
                     break
+            # else:
+                # print('Amostra inválida')
+
+            if animate:
+                self.animate(pos, goal)
         
         if path_found:
-            print('Encontrou o caminho apos gerar {} nos.'.format(self.tree.number_of_nodes() - 1))
             path = nx.shortest_path(self.tree, self.robot_node, self.goal_node)
             self.draw_tree(path, pos)
             return path
         else:
-            print('Caminho nao encontrado.')
             return None
 
     def reset_tree(self):
         self.tree = nx.Graph()
 
-    def animate(self, i):
-        nx.draw(self.tree)
-        plt.show()
+    def animate(self, pos, goal):
+        plt.cla()
+        nx.draw(self.tree, pos)
+        
+        plt.plot(goal[0], goal[1], 'rx')
+
+        plt.axis('equal')
+        plt.grid(which='major', axis='both', linestyle='-', color='r', linewidth=1)
+        plt.plot()
+        plt.draw()
+        plt.pause(0.001)
 
     def draw_tree(self, path, pos):
         num_nodes = self.tree.number_of_nodes()
@@ -150,8 +228,7 @@ class RRT:
 
         nx.draw(self.tree, pos, node_color=color_map)
         plt.axis('equal')
-        # plt.show()
-
+        
         path_edges = list(zip(path, path[1:]))
         color_map = ["green"] + ["blue"] * (len(path) - 2) + ["red"]
         nx.draw_networkx_nodes(self.tree, pos, nodelist=path, node_color=color_map)

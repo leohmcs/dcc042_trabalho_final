@@ -1,3 +1,5 @@
+# coding: utf-8
+
 import numpy as np
 import cv2
 
@@ -32,20 +34,15 @@ class AnalisadorFronteira:
 
     # recebe o mapa de ocupacao, 0 <= p_occ <= 100
     # retorna uma matriz booleana com 1 nos pixels de fronteiras
-    def get_frontier_pixels(self, m, threshold = 49):
+    def get_frontier_pixels(self, m, unknown_flag, threshold = 49):
         frontier_map = np.zeros(m.shape)
         it = np.nditer(m, flags=['multi_index'])
         for p in it:
             neighbours = self.get_neighbours(m.shape, it.multi_index)
-            if 0 <= p < threshold and np.any(m[neighbours] == -1):
+            if 0 <= p < threshold and np.any(m[neighbours] == unknown_flag):
                     # e considerado fronteira todo ponto que esta provavelmente livre e 
                     # e vizinho de um ponto desconhecido
                     frontier_map[it.multi_index] = 1
 
         return frontier_map
-
-    # retorna o objetivo 
-    def nearest_frontier_points(self, frontiers, robot_pos):
-        pass
-        
         
