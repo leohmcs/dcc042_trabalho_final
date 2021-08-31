@@ -21,7 +21,6 @@ class RRT:
         def __init__(self, position):
             self.position = position
 
-    # TODO: dar um nome mais decente para trees
     def __init__(self, max_nodes, occupancy_thresh=0.8, time_step=1, speed=1):
         self.OCCUPANCY_THRESH = occupancy_thresh
         
@@ -32,7 +31,7 @@ class RRT:
         self.goal_node = None
 
         # RRTs dos outros robos
-        self.trees = None
+        self.friends = None
         
         # control
         self.time_step = time_step  # seconds
@@ -86,10 +85,16 @@ class RRT:
         return True and self.compare_trees(2)
 
     def compare_trees(self, thresh):
-        if self.trees is None:
+        if self.friends is None:
             return True
 
-        for n1 in self.trees:
+        trees = []
+        for friend in self.friends:
+            trees.append(friend.rrt)
+        
+        trees = nx.compose(trees)
+
+        for n1 in trees:
             for n in self.rrt:
                 if np.linalg.norm(n - n1) <= thresh:
                     return False
@@ -129,7 +134,7 @@ class RRT:
         
         return False
 
-    def generate_path(self, robot_pose, goal, m, unknown_flag, map_size, trees, animate=False, ani_title='RRT'):
+    def generate_path(self, robot_pose, goal, m, unknown_flag, map_size, friends, animate=False, ani_title='RRT'):
         # animacao da geracao da arvore
         if animate:
             # TODO: botar nome do robo no titulo do plot
@@ -138,7 +143,7 @@ class RRT:
             plt.show()
 
         # arvores dos outros robos
-        self.trees = trees
+        self.friends = friends
 
         path_found = False
         pos = {}

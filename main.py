@@ -56,21 +56,21 @@ def main():
         r2 = robot.Robot('Pioneer_p3dx#0', '127.0.0.1', 20000)
         r3 = robot.Robot('Pioneer_p3dx#1', '127.0.0.1', 20001)
         
-        finished = r3.begin_exploration(None, 5)
+        # finished = r3.begin_exploration(None, 5)
 
-        # # TODO: passar as arvores dos outros robos como argumento
-        # p1 = Process(target=r1.begin_exploration, args=(None,))
-        # p1.start()
+        # TODO: passar as arvores dos outros robos como argumento
+        p1 = Process(target=r1.begin_exploration, args=(None, 5, (r2, r3)))
+        p1.start()
 
-        # p2 = Process(target=r2.begin_exploration, args=(None,))
-        # p2.start()
+        p2 = Process(target=r2.begin_exploration, args=(None, 5, (r1, r3)))
+        p2.start()
 
-        # p3 = Process(target=r3.begin_exploration, args=(None,))
-        # p3.start()
+        p3 = Process(target=r3.begin_exploration, args=(None, 5, (r1, r2)))
+        p3.start()
 
-        # p1.join()
-        # p2.join()
-        # p3.join()
+        p1.join()
+        p2.join()
+        p3.join()
 
 
 if __name__ == "__main__":

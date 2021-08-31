@@ -7,6 +7,7 @@
 import sim
 import numpy as np
 import cv2
+import networkx as nx
 
 import analisador_de_fronteira
 import occupancy_grid
@@ -28,6 +29,8 @@ class Robot:
         self.rrt = rrt.RRT(10000, self.linear_vel)
         self.occ_grid = occupancy_grid.OccupancyGrid()
         self.afront = analisador_de_fronteira.AnalisadorFronteira()
+
+        self.friends = None
 
         # handles da simulação
         self.robot = object.Object(self.name) 
@@ -109,9 +112,11 @@ class Robot:
 
         return True
 
-    def begin_exploration(self, trees, duration_min):
+    def begin_exploration(self, trees, duration_min, friends):
         self.log_message('Iniciou exploração.')
 
+        self.friends = friends
+        
         exploration_start_time = time.time()
         count = 0
         while time.time() - exploration_start_time <= 60 * duration_min:
