@@ -44,36 +44,41 @@ class RRT:
     def position_to_cell(self, pos, cell_size):
         return np.floor(pos / cell_size).astype('int')
 
-    def generate_random_sample(self, m, unknow_flag):
+    def generate_random_sample(self, m, map_size, unknow_flag):
         # random position
         rng = np.random.default_rng()
         pos = rng.choice(np.transpose(np.where(m != unknow_flag)))
 
-        return np.array([pos[1], pos[0]])
+        cc = np.random.choice(map_size[1])
+        rr = np.random.choice(map_size[0])
+
+
+        return np.array([rr, cc])
     
     # every cell with occupancy probability greater than or equal to thresh is considered occupied
     def validate_sample(self, nn, node, m, thresh):
         if node[0] >= m.shape[0] or node[1] >= m.shape[1]:
             return False
 
-        m_img = np.copy(m)
-        ind_unknow = np.where(m_img == -1)
-        m_img[ind_unknow] = 0.5
-        m_img = ((1 - m_img)*255).astype('uint8')
-
         rr, cc = line(node[1], node[0], nn[1], nn[0])
 
-        m_img = cv2.cvtColor(m_img, cv2.COLOR_GRAY2RGB)
-        m_img[rr, cc] = (0, 0, 255)
-        m_img[node[1], node[0]] = (0, 255, 0)
+        # m_img = np.copy(m)
+        # ind_unknow = np.where(m_img == -1)
+        # m_img[ind_unknow] = 0.5
+        # m_img = ((1 - m_img)*255).astype('uint8')
 
-        scale = 5
-        new_dim = (m_img.shape[1] * scale, m_img.shape[0] * scale)
-        m_resized = cv2.resize(m_img, new_dim, interpolation=cv2.INTER_AREA)
+        # m_img = cv2.cvtColor(m_img, cv2.COLOR_GRAY2RGB)
+        # m_img[rr, cc] = (0, 0, 255)
+        # m_img[node[1], node[0]] = (0, 255, 0)
 
-        cv2.imshow("Validar R", m_resized)
-        cv2.imshow("Validar", m_img)
-        cv2.waitKey(10) & 0xff
+        # scale = 5
+        # new_dim = (m_img.shape[1] * scale, m_img.shape[0] * scale)
+        # m_resized = cv2.resize(m_img, new_dim, interpolation=cv2.INTER_AREA)
+
+        # cv2.imshow("Validar R", m_resized)
+        # cv2.imshow("Validar", m_img)
+        # cv2.waitKey(10) & 0xff
+
         if not np.all((0 <= m[rr, cc]) & (m[rr, cc] < thresh)):
             # print(m[rr, cc])
             return False
@@ -147,25 +152,25 @@ class RRT:
         travel_dist = self.robot_speed * self.time_step
         while self.tree.number_of_nodes() <= self.max_nodes:
             # gerar nova amostra aleatoria
-            rand_pos = (self.generate_random_sample(m, unknown_flag) * cell_size).astype('int')
+            rand_pos = (self.generate_random_sample(m, map_size, unknown_flag) * cell_size).astype('int')
             x_rand = self.Node(rand_pos)
 
             ## TODO: DEBUGANDO
-            rand_cell = self.position_to_cell(rand_pos, cell_size)
-            m_img = np.copy(m)
-            ind_unknow = np.where(m_img == -1)
-            m_img[ind_unknow] = 0.5
-            m_img = ((1 - m_img)*255).astype('uint8')
-            m_img = cv2.cvtColor(m_img, cv2.COLOR_GRAY2RGB)
-            m_img[rand_cell[1], rand_cell[0]] = (255, 0, 0)
+            # rand_cell = self.position_to_cell(rand_pos, cell_size)
+            # m_img = np.copy(m)
+            # ind_unknow = np.where(m_img == -1)
+            # m_img[ind_unknow] = 0.5
+            # m_img = ((1 - m_img)*255).astype('uint8')
+            # m_img = cv2.cvtColor(m_img, cv2.COLOR_GRAY2RGB)
+            # m_img[rand_cell[1], rand_cell[0]] = (255, 0, 0)
 
-            scale = 5
-            new_dim = (m_img.shape[1] * scale, m_img.shape[0] * scale)
-            m_resized = cv2.resize(m_img, new_dim, interpolation=cv2.INTER_AREA)
+            # scale = 5
+            # new_dim = (m_img.shape[1] * scale, m_img.shape[0] * scale)
+            # m_resized = cv2.resize(m_img, new_dim, interpolation=cv2.INTER_AREA)
 
-            cv2.imshow("Validar R", m_resized)
-            cv2.imshow("Validar", m_img)
-            cv2.waitKey(10) & 0xff
+            # cv2.imshow("Validar R", m_resized)
+            # cv2.imshow("Validar", m_img)
+            # cv2.waitKey(10) & 0xff
             ## DEBUGANDO
 
             # obter o no mais proximo da amostra, ao qual ela sera ligada
@@ -190,7 +195,7 @@ class RRT:
 
                 # print("Adicionou nó na posição: {}".format(x_new.position))
 
-                if self.goal_reached(x_new.position, goal, 0.5):
+                if self.goal_reached(x_new.position, goal, 1):
                     self.goal_node = x_new
                     path_found = True
                     break

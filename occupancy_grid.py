@@ -74,7 +74,7 @@ class OccupancyGrid():
 
     # TW_L e a matriz de transformacao homogenea do laser para o frame global
     # laser_position esta sempre no referencial do robo
-    def update_map(self, laser_pos, TW_L, raw_range_data, max_sensor_range=4):
+    def update_map(self, laser_pos, TW_L, raw_range_data, max_sensor_range=5):
         laser_data = self.format_laser_data(raw_range_data, self.scan_range, self.step_size, max_sensor_range)
         laser_data = self.laser_noise(laser_data)
 

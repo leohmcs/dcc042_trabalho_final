@@ -11,22 +11,23 @@ import cv2
 import analisador_de_fronteira
 import occupancy_grid
 import object
+import rrt
 
 import time
 
 class Robot:
-    def __init__(self, name, rrt, ip, port):
-        self.name = name
-        self.pose = None
-        self.rrt = rrt
-        self.occ_grid = occupancy_grid.OccupancyGrid()
-        self.afront = analisador_de_fronteira.AnalisadorFronteira()
-
-        # dados do robô
+    def __init__(self, name, ip, port):
+         # dados do robô
         self.L = 0.381
         self.r = 0.0975
         self.linear_vel = 0.7
         self.ang_vel = np.deg2rad(30)
+
+        self.name = name
+        self.pose = None
+        self.rrt = rrt.RRT(10000, self.linear_vel)
+        self.occ_grid = occupancy_grid.OccupancyGrid()
+        self.afront = analisador_de_fronteira.AnalisadorFronteira()
 
         # handles da simulação
         self.robot = object.Object(self.name) 
@@ -79,7 +80,10 @@ class Robot:
 
         current_goal_ind = 1
         while np.linalg.norm(self.pose[:2] - path[-1].position) >= dist_err and current_goal_ind < len(path):
+            # self.log_message("Indo para o {}º destino: {}".format(current_goal_ind, path[current_goal_ind].position))
+
             self.update_pose()
+            self.mapping()
             current_goal = path[current_goal_ind].position
 
             dy = current_goal[1] - self.pose[1]
@@ -88,100 +92,129 @@ class Robot:
 
             ang_error = ang - self.pose[2]
             if np.abs(ang_error) >= ang_err:
-                self.log_message("Ângulo atual: {} / Ângulo desejado: {} / Erro: {} \n".format(np.rad2deg(self.pose[2]), np.rad2deg(ang), ang_error))
+                # self.log_message("Ângulo atual: {} / Ângulo desejado: {} / Erro: {} \n".format(np.rad2deg(self.pose[2]), np.rad2deg(ang), ang_error))
                 vr, vl = self.kinematic_model(0, self.ang_vel * np.copysign(1, ang_error))
                 self.move(vr, vl)
                 continue
     
             dist = np.linalg.norm(self.pose[:2] - current_goal)
             if dist >= dist_err:
-                self.log_message("Posição atual: {} / Posição desejada: {} / Erro: {} \n".format(self.pose[:2], path[current_goal_ind].position, dist))
+                # self.log_message("Posição atual: {} / Posição desejada: {} / Erro: {} \n".format(self.pose[:2], path[current_goal_ind].position, dist))
                 vr, vl = self.kinematic_model(self.linear_vel, 0)
                 self.move(vr, vl)
             else:
                 current_goal_ind += 1
 
-            self.log_message("Indo para o {}º destino: {}".format(current_goal_ind, path[current_goal_ind].position))
-
         self.move(0, 0)
-
-        self.log_message("Chegou ao destino final: {}".format(path[-1].position))
 
         return True
 
-    def begin_exploration(self, trees):
+    def begin_exploration(self, trees, duration_min):
         self.log_message('Iniciou exploração.')
 
-        # primeira etapa: encotrar as fronteiras
-        ## girar para detectar os arredores
-        vr, vl = self.kinematic_model(0, self.ang_vel)
-        self.move(vr, vl)
+        exploration_start_time = time.time()
+        count = 0
+        while time.time() - exploration_start_time <= 60 * duration_min:
+            # primeira etapa: encotrar as fronteiras
+            ## girar para detectar os arredores
+            vr, vl = self.kinematic_model(0, self.ang_vel)
+            self.move(vr, vl)
 
-        duration = (2 * np.pi) / self.ang_vel  # tempo para completar uma volta completa
-        # self.log_message("Duração do mapeamento: {}".format(duration))
-        self.mapping(duration)
+            duration = (2 * np.pi) / self.ang_vel  # tempo para completar uma volta completa
+            start_time = time.time()
+            while time.time() - start_time <= duration:
+                self.mapping()
 
-        self.move(0, 0)
+            self.move(0, 0)
 
-        occ_map = self.occ_grid.m
-        ind_uknown = np.where(occ_map == None)
-        occ_map[ind_uknown] = 0
-        occ_map = self.occ_grid.logodds_to_prob(occ_map)
-        occ_map[ind_uknown] = -1
+            print('parou de rodar')
+            occ_map = np.copy(self.occ_grid.m)
+            ind_unknown = np.where(occ_map == None)
+            occ_map[ind_unknown] = 0
+            occ_map = self.occ_grid.logodds_to_prob(occ_map)
+            occ_map[ind_unknown] = -1
 
-        # escolher ponto aleatório da fronteira como goal
-        frontiers = (self.afront.get_frontier_pixels(occ_map, -1)).astype('uint8')
-        cv2.imshow("F", frontiers * 255)
-        rng = np.random.default_rng() 
-        goal = rng.choice(np.transpose(np.where(frontiers > 0)))
-        goal = goal * self.occ_grid.CELL_SIZE
-        goal = goal[::-1]
+            # m_img = np.copy(occ_map)
+            # ind_unknown = np.where(m_img == -1)
+            # m_img[ind_unknown] = 0.5
+            # m_img = ((1 - m_img)*255).astype('uint8')
 
-        self.log_message("Indo para ponto {} da fronteira".format(goal))
-        # segunda etapa: obter caminho para fronteira
-        path = self.rrt.generate_path(self.pose, goal, occ_map, -1, self.occ_grid.MAP_SIZE, trees, animate=True, ani_title=self.name)
-        if path is None:
-            self.log_message('Caminho não encontrado.')
+            # scale = 5
+            # new_dim = (m_img.shape[1] * scale, m_img.shape[0] * scale)
+            # m_resized = cv2.resize(m_img, new_dim, interpolation=cv2.INTER_AREA)
+
+            # cv2.imshow("Validar R", m_resized)
+            # if cv2.waitKey(0) & 0xff:
+            #     cv2.destroyWindow("Validar R")
+
+            print('detectando fronteiras')
+            # segunda etapa: obter caminho para fronteira
+            ## escolher ponto aleatório da fronteira como goal
+            frontiers = (self.afront.get_frontier_pixels(occ_map, -1)).astype('uint8')
+            # cv2.imshow("F", frontiers * 255)
+            # if cv2.waitKey(0) & 0xff:
+            #     cv2.destroyWindow("F")
+
+            print(ind_unknown)
+
+            # não há mais fronteiras para explorar
+            if np.all(frontiers == 0):
+                return True
+
+            rng = np.random.default_rng() 
+            goal = rng.choice(np.transpose(np.where(frontiers == 1)))
+            goal = goal * self.occ_grid.CELL_SIZE
+            goal = goal[::-1]
+
+            self.log_message("Indo para ponto {} da fronteira".format(goal))
+
+            path = self.rrt.generate_path(self.pose, goal, occ_map, -1, self.occ_grid.MAP_SIZE, trees, animate=True, ani_title=self.name)
+            if path is None:
+                self.log_message('Caminho não encontrado.')
+                self.rrt.reset_tree()
+                self.begin_exploration()
+
+            self.log_message('Caminho encontrado.')
+
+            # terceira etapa: ir até a fronteira pelo caminho encontrado
+            reached_goal = self.controller(path)
+            if not reached_goal:
+                # TODO: fazer o que nesse caso?
+                pass
+
+            self.log_message("Chegou à fronteira: {}".format(path[-1].position))
             self.rrt.reset_tree()
-            self.begin_exploration()
 
-        self.log_message('Caminho encontrado.')
+            count += 1
+            self.log_message(str(count))
 
-        # terceira etapa: ir até a fronteira pelo caminho encontrado
-        reached_goal = self.controller(path)
-        if not reached_goal:
-            # TODO: fazer o que nesse caso?
-            pass
-
-    def mapping(self, duration):
-        self.log_message('Mapeando.')
-        
+    def mapping(self):        
         # Garantindo que as leituras são válidas
         returnCode = 1
         while returnCode != 0:
             returnCode, range_data = sim.simxGetStringSignal(self.clientID, self.laser_data_name, sim.simx_opmode_streaming + 10)
 
-        start_time = time.time()
-        while time.time() - start_time <= 1.1 * duration:  # (+10% para garantir)
-            # lendo a posição e orientação do laser em relação ao robô
-            returnCode, self.laser.position = sim.simxGetObjectPosition(self.clientID, self.laser.handle, self.robot.handle, sim.simx_opmode_oneshot_wait)        
-            returnCode, self.laser.orientation = sim.simxGetObjectOrientation(self.clientID, self.laser.handle, self.robot.handle, sim.simx_opmode_oneshot_wait)
+        # start_time = time.time()
+        # while time.time() - start_time <= 1.1 * duration:  # (+10% para garantir)
+        # lendo a posição e orientação do laser em relação ao robô
+        returnCode, self.laser.position = sim.simxGetObjectPosition(self.clientID, self.laser.handle, self.robot.handle, sim.simx_opmode_oneshot_wait)        
+        returnCode, self.laser.orientation = sim.simxGetObjectOrientation(self.clientID, self.laser.handle, self.robot.handle, sim.simx_opmode_oneshot_wait)
 
-            self.update_pose()
+        self.update_pose()
 
-            # recebendo as leituras do laser
-            returnCode, string_range_data = sim.simxGetStringSignal(self.clientID, self.laser_data_name, sim.simx_opmode_buffer)
-            raw_range_data = sim.simxUnpackFloats(string_range_data)
+        # recebendo as leituras do laser
+        returnCode, string_range_data = sim.simxGetStringSignal(self.clientID, self.laser_data_name, sim.simx_opmode_buffer)
+        raw_range_data = sim.simxUnpackFloats(string_range_data)
 
-            # calcula a transformação do robô para o mundo e do laser para o robô
-            self.robot.transforms = object.Transforms(self.pose[2], self.pose)
-            self.laser.transforms = object.Transforms(self.laser.orientation[2], self.laser.position)
-            
-            # obtém a transformação do laser para o mundo TW_L
-            TW_L = self.robot.transforms.homogeneous_tf @ self.laser.transforms.homogeneous_tf
-            
-            self.occ_grid.update_map(self.laser.position[:2], TW_L, raw_range_data)
-            self.occ_grid.plot_map(None)
+        # calcula a transformação do robô para o mundo e do laser para o robô
+        self.robot.transforms = object.Transforms(self.pose[2], self.pose)
+        self.laser.transforms = object.Transforms(self.laser.orientation[2], self.laser.position)
+        
+        # obtém a transformação do laser para o mundo TW_L
+        TW_L = self.robot.transforms.homogeneous_tf @ self.laser.transforms.homogeneous_tf
+        
+        self.occ_grid.update_map(self.laser.position[:2], TW_L, raw_range_data)
+        self.occ_grid.plot_map(None)
 
     def log_message(self, msg):
         print('[{}] {}'.format(self.name, msg))

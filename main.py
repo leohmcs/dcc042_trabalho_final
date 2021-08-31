@@ -47,15 +47,16 @@ def format_laser_data(range_data, scan_range, step_size, max_sensor_range):
 
 
 def main():
+    # results = [False] * num_robots
     start_time = time.time()
     while time.time() - start_time <= TIME_LIMIT_MINUTES * 60:
 
         # iniciar exploracao de cada robo em paralelo
-        r1 = robot.Robot('Pioneer_p3dx#2', rrt.RRT(10000), '127.0.0.1', 19999)
-        r2 = robot.Robot('Pioneer_p3dx#0', rrt.RRT(10000), '127.0.0.1', 20000)
-        r3 = robot.Robot('Pioneer_p3dx#1', rrt.RRT(10000), '127.0.0.1', 20001)
+        r1 = robot.Robot('Pioneer_p3dx#2', '127.0.0.1', 19999)
+        r2 = robot.Robot('Pioneer_p3dx#0', '127.0.0.1', 20000)
+        r3 = robot.Robot('Pioneer_p3dx#1', '127.0.0.1', 20001)
         
-        r3.begin_exploration(None)
+        finished = r3.begin_exploration(None, 5)
 
         # # TODO: passar as arvores dos outros robos como argumento
         # p1 = Process(target=r1.begin_exploration, args=(None,))
