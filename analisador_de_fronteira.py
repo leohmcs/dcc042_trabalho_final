@@ -42,10 +42,7 @@ class AnalisadorFronteira:
             if 0 <= p < threshold and np.any(m[neighbours] == unknown_flag):
                     # e considerado fronteira todo ponto que esta provavelmente livre e 
                     # e vizinho de um ponto desconhecido
-                    
                     frontier_map[it.multi_index] = 1
-            else:
-                print(p)
                 
         return frontier_map
         

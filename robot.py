@@ -1,13 +1,9 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# TODO (ideia geral)
-# - incluir a parte de detectar fronteira e definir o objetivo em begin_exploration()
-
 import sim
 import numpy as np
-import cv2
-import networkx as nx
+import matplotlib.pyplot as plt
 
 import analisador_de_fronteira
 import occupancy_grid
@@ -40,7 +36,7 @@ class Robot:
         self.laser = object.Object('Hokuyo_URG_04LX_UG01_ROS' + self.name[-2:])
         self.laser.handle = None
 
-        self.laser_data_name = "hokuyo_range_data"
+        self.laser_data_name = "hokuyo_range_data" + self.name[-2:]
 
         self.clientID = sim.simxStart(ip, port, True, True, 5000, 5)
         if self.clientID != -1:
@@ -67,8 +63,8 @@ class Robot:
         return vr, vl
 
     def move(self, vr, vl):
-        sim.simxSetJointTargetVelocity(self.clientID, self.r_motor_handle, vr, sim.simx_opmode_oneshot_wait)
-        sim.simxSetJointTargetVelocity(self.clientID, self.l_motor_handle, vl, sim.simx_opmode_oneshot_wait)
+        sim.simxSetJointTargetVelocity(self.clientID, self.r_motor_handle, vr, sim.simx_opmode_oneshot)
+        sim.simxSetJointTargetVelocity(self.clientID, self.l_motor_handle, vl, sim.simx_opmode_oneshot)
 
     def update_pose(self):
         return_code, position = sim.simxGetObjectPosition(self.clientID, self.robot.handle, -1, sim.simx_opmode_oneshot_wait)
@@ -76,7 +72,7 @@ class Robot:
         self.pose = np.array([position[0], position[1], orientation[2]])
 
     # path é uma lista de Nodes (classe em rrt.py)
-    def controller(self, path, ang_err=0.2, dist_err=0.5):
+    def controller(self, path, start, ang_err=0.2, dist_err=0.5):
         if self.pose is None:
             self.log_message("Pose do robô é desconhecida. Impossível trilhar caminho.")
             return False
@@ -85,9 +81,14 @@ class Robot:
         while np.linalg.norm(self.pose[:2] - path[-1].position) >= dist_err and current_goal_ind < len(path):
             # self.log_message("Indo para o {}º destino: {}".format(current_goal_ind, path[current_goal_ind].position))
 
+            if time.time() - start > 600:
+                break
+
             self.update_pose()
-            self.mapping()
             current_goal = path[current_goal_ind].position
+
+            self.mapping()
+
 
             dy = current_goal[1] - self.pose[1]
             dx = current_goal[0] - self.pose[0]
@@ -117,9 +118,11 @@ class Robot:
 
         self.friends = friends
         
-        exploration_start_time = time.time()
         count = 0
-        while time.time() - exploration_start_time <= 60 * duration_min:
+        num_iter = []
+        area_explored = []
+        exploration_start_time = time.time()
+        while time.time() - exploration_start_time <= (60 * duration_min):
             # primeira etapa: encotrar as fronteiras
             ## girar para detectar os arredores
             vr, vl = self.kinematic_model(0, self.ang_vel)
@@ -130,40 +133,23 @@ class Robot:
             while time.time() - start_time <= duration:
                 self.mapping()
 
+
             self.move(0, 0)
 
-            print('parou de rodar')
             occ_map = np.copy(self.occ_grid.m)
             ind_unknown = np.where(occ_map == None)
             occ_map[ind_unknown] = 0
             occ_map = self.occ_grid.logodds_to_prob(occ_map)
             occ_map[ind_unknown] = -1
 
-            # m_img = np.copy(occ_map)
-            # ind_unknown = np.where(m_img == -1)
-            # m_img[ind_unknown] = 0.5
-            # m_img = ((1 - m_img)*255).astype('uint8')
-
-            # scale = 5
-            # new_dim = (m_img.shape[1] * scale, m_img.shape[0] * scale)
-            # m_resized = cv2.resize(m_img, new_dim, interpolation=cv2.INTER_AREA)
-
-            # cv2.imshow("Validar R", m_resized)
-            # if cv2.waitKey(0) & 0xff:
-            #     cv2.destroyWindow("Validar R")
-
-            print('detectando fronteiras')
+            self.log_message('Detectando fronteiras')
             # segunda etapa: obter caminho para fronteira
             ## escolher ponto aleatório da fronteira como goal
             frontiers = (self.afront.get_frontier_pixels(occ_map, -1)).astype('uint8')
-            # cv2.imshow("F", frontiers * 255)
-            # if cv2.waitKey(0) & 0xff:
-            #     cv2.destroyWindow("F")
-
-            print(ind_unknown)
 
             # não há mais fronteiras para explorar
             if np.all(frontiers == 0):
+                self.log_message("Nenhuma fronteira restante.")
                 return True
 
             rng = np.random.default_rng() 
@@ -173,7 +159,7 @@ class Robot:
 
             self.log_message("Indo para ponto {} da fronteira".format(goal))
 
-            path = self.rrt.generate_path(self.pose, goal, occ_map, -1, self.occ_grid.MAP_SIZE, trees, animate=True, ani_title=self.name)
+            path = self.rrt.generate_path(self.pose, goal, occ_map, -1, self.occ_grid.MAP_SIZE, trees, animate=False, ani_title=self.name)
             if path is None:
                 self.log_message('Caminho não encontrado.')
                 self.rrt.reset_tree()
@@ -182,16 +168,31 @@ class Robot:
             self.log_message('Caminho encontrado.')
 
             # terceira etapa: ir até a fronteira pelo caminho encontrado
-            reached_goal = self.controller(path)
-            if not reached_goal:
-                # TODO: fazer o que nesse caso?
-                pass
+            self.controller(path, exploration_start_time)
 
             self.log_message("Chegou à fronteira: {}".format(path[-1].position))
             self.rrt.reset_tree()
 
             count += 1
-            self.log_message(str(count))
+            num_iter.append(count)
+            explored = self.count_explored(occ_map, -1)
+            area_explored.append(explored)
+
+        area_explored = np.array(area_explored)
+        area_explored = area_explored * 0.25
+
+        plt.plot(num_iter, area_explored)
+        plt.show()
+        
+
+    def count_explored(self, m, unknown_flag):
+        count = 0
+        it = np.nditer(m, flags=['multi_index'])
+        for p in it:
+            if p != unknown_flag:
+                    count += 1
+
+        return count
 
     def mapping(self):        
         # Garantindo que as leituras são válidas
@@ -199,8 +200,6 @@ class Robot:
         while returnCode != 0:
             returnCode, range_data = sim.simxGetStringSignal(self.clientID, self.laser_data_name, sim.simx_opmode_streaming + 10)
 
-        # start_time = time.time()
-        # while time.time() - start_time <= 1.1 * duration:  # (+10% para garantir)
         # lendo a posição e orientação do laser em relação ao robô
         returnCode, self.laser.position = sim.simxGetObjectPosition(self.clientID, self.laser.handle, self.robot.handle, sim.simx_opmode_oneshot_wait)        
         returnCode, self.laser.orientation = sim.simxGetObjectOrientation(self.clientID, self.laser.handle, self.robot.handle, sim.simx_opmode_oneshot_wait)
@@ -219,12 +218,7 @@ class Robot:
         TW_L = self.robot.transforms.homogeneous_tf @ self.laser.transforms.homogeneous_tf
         
         self.occ_grid.update_map(self.laser.position[:2], TW_L, raw_range_data)
-        self.occ_grid.plot_map(None)
+        self.occ_grid.plot_map(self.name)
 
     def log_message(self, msg):
         print('[{}] {}'.format(self.name, msg))
-    
-
-# TODO: botar a conexao com simulador aqui?
-def main():
-    pass

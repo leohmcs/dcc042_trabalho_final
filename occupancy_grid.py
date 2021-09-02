@@ -6,8 +6,6 @@ import matplotlib.pyplot as plt
 import cv2
 import math
 
-import object
-
 from skimage.draw import line
 
 
@@ -17,10 +15,6 @@ class OccupancyGrid():
         self.sensor_range = 4 # Metros
         self.scan_range = 180*np.pi/180
         self.step_size = 2*np.pi/1024
-
-        # Nomes dos objetos
-        robotname = 'Pioneer_p3dx'
-        lasername = 'Hokuyo_URG_04LX_UG01_ROS_body'
 
         # Constantes relacionadas ao mapeamento
         self.MAP_SIZE = np.array([80, 80])
@@ -102,28 +96,16 @@ class OccupancyGrid():
 
             self.m[rr, cc] = m_aux
             
-    def plot_map(self, path, scale=5):
+    def plot_map(self, name, scale=5):
         m = np.copy(self.m)
         ind_unknow = np.where(m == None)
-        m[ind_unknow] = self.INITIAL_PROB_VALUE
+        m[ind_unknow] = 0
         m = self.logodds_to_prob(m.astype('float64'))
         m_img = ((1 - m)*255).astype('uint8')
-        
-        if path is not None:
-            # Mudar o espaco de cor para mostrar a rota colorida e nao confundir com o mapa
-            m_img = cv2.cvtColor(m_img, cv2.COLOR_GRAY2RGB)
-            
-            path = np.transpose(path)
-            path_x = path[0]
-            path_y = path[1]
-            path = np.array(self.coord2index(path_x, path_y, self.m.shape[0], self.CELL_SIZE)).astype('int')
-            
-            m_img[path[1], path[0]] = (0, 255, 0)
             
         ## Redimensionar a imagem para melhorar a visualizacao
-        scale = 5
         new_dim = (m_img.shape[1] * scale, m_img.shape[0] * scale)
         m_resized = cv2.resize(m_img, new_dim, interpolation=cv2.INTER_AREA)
 
-        cv2.imshow("Mapa", m_resized)
+        cv2.imshow(name, m_resized)
         cv2.waitKey(10) & 0xff
