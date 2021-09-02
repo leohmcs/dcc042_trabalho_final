@@ -72,7 +72,7 @@ class Robot:
         self.pose = np.array([position[0], position[1], orientation[2]])
 
     # path é uma lista de Nodes (classe em rrt.py)
-    def controller(self, path, start, ang_err=0.2, dist_err=0.5):
+    def controller(self, path, start, duration, ang_err=0.2, dist_err=0.5):
         if self.pose is None:
             self.log_message("Pose do robô é desconhecida. Impossível trilhar caminho.")
             return False
@@ -81,7 +81,8 @@ class Robot:
         while np.linalg.norm(self.pose[:2] - path[-1].position) >= dist_err and current_goal_ind < len(path):
             # self.log_message("Indo para o {}º destino: {}".format(current_goal_ind, path[current_goal_ind].position))
 
-            if time.time() - start > 600:
+            if time.time() - start > 60 * duration:
+                self.log_message("Limite de tempo atingido.")
                 break
 
             self.update_pose()
@@ -168,7 +169,7 @@ class Robot:
             self.log_message('Caminho encontrado.')
 
             # terceira etapa: ir até a fronteira pelo caminho encontrado
-            self.controller(path, exploration_start_time)
+            self.controller(path, exploration_start_time, duration_min)
 
             self.log_message("Chegou à fronteira: {}".format(path[-1].position))
             self.rrt.reset_tree()
@@ -179,7 +180,7 @@ class Robot:
             area_explored.append(explored)
 
         area_explored = np.array(area_explored)
-        area_explored = area_explored * 0.25
+        area_explored = area_explored * self.occ_grid.CELL_SIZE**2
 
         plt.plot(num_iter, area_explored)
         plt.show()
